@@ -1,0 +1,9 @@
+{
+  "name": "我的衣橱",
+  "short_name": "衣橱",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#EEF0EC",
+  "theme_color": "#EEF0EC",
+  "icons": [{ "src": "icon.png", "sizes": "512x512", "type": "image/png" }]
+}

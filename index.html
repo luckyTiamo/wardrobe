@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>我的衣橱</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="衣橱">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#EEF0EC" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121413" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" href="icon.png">
+<style>
+/* 布局：顶部吊牌式身材标签 + 分类条 + 三列衣物网格，底部固定双按钮；所有结果在底部抽屉中展开 */
+:root{
+  --bg:#EEF0EC; --surface:#FFFFFF; --ink:#1B1F1D; --muted:#6A706B; --line:#D8DCD5;
+  --accent:#2C3D9C; --accent-ink:#FFFFFF; --accent-soft:#E2E6F7; --tag:#F5E2D8; --tag-ink:#6B3B2A;
+  --good:#2F7A4F; --warn:#A6631B; --bad:#C0392B;
+  --f-body:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --r:14px; color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#121413; --surface:#1C1F1D; --ink:#ECEEEA; --muted:#9AA09B; --line:#2D312E;
+  --accent:#93A2F2; --accent-ink:#10142B; --accent-soft:#232947; --tag:#3A2A24; --tag-ink:#F0C9B8;
+  --good:#7CC79A; --warn:#E3A764; --bad:#F08A7E; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{background:var(--bg);margin:0}
+body{color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;-webkit-tap-highlight-color:transparent;padding-top:env(safe-area-inset-top,0px)}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+a{color:var(--accent)}
+[hidden]{display:none!important}
+
+.wrap{max-width:640px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px 130px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+h1{margin:0;font-size:26px;font-weight:700;letter-spacing:.02em}
+h1 small{font-family:var(--f-mono);font-size:13px;color:var(--muted);font-weight:400;margin-left:8px;letter-spacing:0}
+
+.hangtag{position:relative;display:inline-flex;align-items:center;gap:6px;background:var(--tag);color:var(--tag-ink);border:0;border-radius:6px 12px 12px 6px;padding:6px 12px 6px 24px;font-family:var(--f-mono);font-size:13px;white-space:nowrap}
+.hangtag::before{content:"";position:absolute;left:9px;top:50%;width:7px;height:7px;margin-top:-3.5px;border-radius:50%;background:var(--bg)}
+
+.chips{display:flex;gap:8px;overflow-x:auto;margin:18px -16px 14px;padding:0 16px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 14px;font-size:14px}
+.chip b{font-family:var(--f-mono);font-weight:400;color:var(--muted);margin-left:4px;font-size:12px}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chip[aria-pressed="true"] b{color:inherit;opacity:.7}
+
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.cell{border:0;padding:0;background:none;text-align:left;min-width:0;display:flex;flex-direction:column;gap:4px}
+.ph{width:100%;aspect-ratio:3/4;border-radius:10px;background:var(--surface);object-fit:cover;display:block;max-width:100%}
+.cell span{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:5px}
+.dot{width:8px;height:8px;border-radius:50%;flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}
+.cell.pending .ph{opacity:.55;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){.cell.pending .ph,.spin{animation:none}}
+
+.empty{border:1.5px dashed var(--line);border-radius:var(--r);padding:36px 20px;text-align:center;color:var(--muted)}
+.empty strong{display:block;color:var(--ink);font-size:17px;margin-bottom:6px}
+.notice{background:var(--accent-soft);border-radius:10px;padding:10px 12px;font-size:14px;margin:14px 0 0;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.notice button{flex:none;border:0;background:var(--accent);color:var(--accent-ink);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:600}
+
+.refs{margin-top:36px;font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 14px}
+.refs a{text-decoration:none;border-bottom:1px solid var(--line);color:var(--ink)}
+
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:20;background:linear-gradient(to top,var(--bg) 70%,transparent);padding:22px max(16px,env(safe-area-inset-right,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.bar .in{max-width:640px;margin:0 auto;display:grid;grid-template-columns:1fr 1.3fr;gap:10px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:12px;border:1px solid var(--line);background:var(--surface);padding:13px 14px;font-weight:600;font-size:15px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.ghost{background:transparent}
+.btn.danger{color:var(--bad);border-color:transparent;background:transparent;font-weight:500}
+.btn:disabled{opacity:.5}
+.btn svg{width:19px;height:19px}
+
+.scrim{position:fixed;inset:0;background:rgba(10,12,11,.45);z-index:30}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;max-height:90%;overflow-y:auto;overscroll-behavior:contain;background:var(--surface);border-radius:20px 20px 0 0;padding:10px max(18px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(18px,env(safe-area-inset-left,0px))}
+.sheet .in{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+.grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 4px;border:0;padding:0;display:block}
+.sheet h2{margin:0;font-size:19px;line-height:1.35;text-wrap:balance}
+.hero{display:grid;grid-template-columns:110px minmax(0,1fr);gap:14px;align-items:start}
+.hero img{width:110px;aspect-ratio:3/4;object-fit:cover;border-radius:12px;max-width:100%}
+.hero h2{margin-bottom:6px}
+.meta{display:flex;flex-wrap:wrap;gap:6px}
+.pill{font-size:12px;padding:2px 9px;border-radius:999px;background:var(--bg);color:var(--muted)}
+.verdict{font-size:18px;font-weight:700;line-height:1.4}
+.verdict.has{color:var(--warn)} .verdict.none{color:var(--good)}
+.sec h3{margin:0 0 10px;font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.06em}
+.sim{display:grid;grid-template-columns:64px minmax(0,1fr);gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.sim:first-of-type{border-top:0}
+.sim img{width:64px;aspect-ratio:3/4;object-fit:cover;border-radius:8px;max-width:100%}
+.sim b{display:block;font-size:14px}
+.sim p{margin:2px 0 0;font-size:13px;color:var(--muted)}
+.lvl{font-size:11px;font-weight:600;padding:1px 7px;border-radius:4px;background:var(--tag);color:var(--tag-ink);margin-left:6px;vertical-align:1px}
+.looks{display:flex;flex-direction:column;gap:12px}
+.look{border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:10px}
+.look h4{margin:0;font-size:16px}
+.strip{display:flex;align-items:center;gap:6px;overflow-x:auto}
+.strip img{width:58px;aspect-ratio:3/4;object-fit:cover;border-radius:8px;flex:none}
+.strip i{font-style:normal;color:var(--muted);font-family:var(--f-mono)}
+.strip img.new{outline:2px solid var(--accent);outline-offset:1px}
+.look p{margin:0;font-size:14px}
+.look .pt{font-size:13px;background:var(--accent-soft);border-radius:8px;padding:8px 10px}
+.look .pt b{font-family:var(--f-mono);font-weight:500;color:var(--accent);margin-right:6px}
+.links{display:flex;gap:8px;flex-wrap:wrap}
+.links a{font-size:13px;text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:4px 12px;color:var(--ink)}
+ul.tips{margin:0;padding-left:18px;font-size:14px;display:flex;flex-direction:column;gap:6px}
+.status{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:14px}
+.spin{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+.row{display:flex;gap:10px}
+.row>*{flex:1;min-width:0}
+.field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.field input,.field select{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 10px;font-size:16px;width:100%}
+.hint{font-size:12px;color:var(--muted);margin:0}
+.err{color:var(--bad);font-size:14px;margin:0}
+.group{display:flex;flex-direction:column;gap:10px;padding-top:16px;border-top:1px solid var(--line)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(12px + env(safe-area-inset-top,0px));z-index:40;background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:14px;max-width:90%}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>我的衣橱<small id="count"></small></h1>
+    <button class="hangtag" id="bodyBtn" aria-label="设置"><span id="bodyTxt">153 cm · 50 kg</span></button>
+  </header>
+  <div id="notice"></div>
+  <nav class="chips" id="chips"></nav>
+  <main id="grid"></main>
+  <footer class="refs">
+    <a target="_blank" rel="noopener" href="https://www.xiaohongshu.com/search_result?keyword=153%E5%B0%8F%E4%B8%AA%E5%AD%90%E7%A9%BF%E6%90%AD">小红书 · 153小个子穿搭</a>
+    <a target="_blank" rel="noopener" href="https://www.pinterest.com/search/pins/?q=petite%205ft%20outfit">Pinterest · petite 5ft</a>
+    <a target="_blank" rel="noopener" href="https://wendyslookbook.com/">Wendy's Lookbook（5'0"）</a>
+    <a target="_blank" rel="noopener" href="https://blog.petitedressing.com/5-feet-tall/">Petite Dressing</a>
+  </footer>
+</div>
+
+<div class="bar"><div class="in">
+  <button class="btn" id="addBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>收进衣橱</button>
+  <button class="btn primary" id="checkBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>想买，先查查</button>
+</div></div>
+<input type="file" id="addInput" accept="image/*" multiple hidden>
+<input type="file" id="checkInput" accept="image/*" hidden>
+<input type="file" id="importInput" accept="application/json,.json" hidden>
+
+<div class="scrim" id="scrim" hidden></div>
+<section class="sheet" id="sheet" hidden role="dialog" aria-modal="true"><div class="in" id="sheetIn"></div></section>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const CATS=["上衣","下装","连衣裙","外套","鞋子","包","配饰"];
+const DEFAULT_MODEL="doubao-seed-2-1-lite-260915";
+const ARK_URL="https://ark.cn-beijing.volces.com/api/v3/chat/completions";
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const safeHex=h=>/^#[0-9a-f]{3,8}$/i.test(h||"")?h:"";
+
+/* ---------- 设置（只存在这台手机上） ---------- */
+const LS={get(k,d){try{const v=localStorage.getItem("wd_"+k);return v==null?d:JSON.parse(v);}catch{return d;}},set(k,v){try{localStorage.setItem("wd_"+k,JSON.stringify(v));}catch{}}};
+let cfg={key:LS.get("key",""),model:LS.get("model",DEFAULT_MODEL),h:LS.get("h",153),w:LS.get("w",50)};
+
+/* ---------- 本地数据库 ---------- */
+let idb;
+function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open("wardrobe",1);r.onupgradeneeded=()=>r.result.createObjectStore("items",{keyPath:"id"});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+function tx(mode,fn){return new Promise((res,rej)=>{const t=idb.transaction("items",mode),s=t.objectStore("items");const r=fn(s);t.oncomplete=()=>res(r?.result);t.onerror=()=>rej(t.error);});}
+const dbAll=()=>tx("readonly",s=>s.getAll());
+const dbPut=it=>tx("readwrite",s=>s.put(it));
+const dbDel=id=>tx("readwrite",s=>s.delete(id));
+
+let items=[],pending=[],filter="全部",urls=new Map(),sheetToken=0;
+const photoUrl=i=>{if(!urls.has(i.id))urls.set(i.id,URL.createObjectURL(i.photo));return urls.get(i.id);};
+async function reload(){items=(await dbAll()).sort((a,b)=>b.createdAt-a.createdAt);render();}
+const newId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+
+/* ---------- 渲染 ---------- */
+function render(){
+  $("#count").textContent=items.length?items.length+" 件":"";
+  $("#bodyTxt").textContent=`${cfg.h} cm · ${cfg.w} kg`;
+  $("#notice").innerHTML=cfg.key?"":`<div class="notice"><span>填好豆包 API Key 后，才能识别衣服和给搭配建议。</span><button data-open="settings">去填写</button></div>`;
+  const counts={全部:items.length};CATS.forEach(c=>counts[c]=items.filter(i=>i.category===c).length);
+  const cats=["全部",...CATS.filter(c=>counts[c])];
+  if(!cats.includes(filter))filter="全部";
+  $("#chips").innerHTML=items.length?cats.map(c=>`<button class="chip" aria-pressed="${c===filter}" data-c="${c}">${c}<b>${counts[c]}</b></button>`).join(""):"";
+  if(!items.length&&!pending.length){
+    $("#grid").innerHTML=`<div class="empty"><strong>衣橱还是空的</strong>点「收进衣橱」，拍照或从相册一次选多张。<br>每件衣服会自动识别类别、颜色和风格。</div>`;return;
+  }
+  const list=items.filter(i=>filter==="全部"||i.category===filter);
+  $("#grid").innerHTML=`<div class="grid">${
+    pending.map(p=>`<div class="cell pending"><img class="ph" src="${p.local}" alt=""><span>${p.stage}</span></div>`).join("")+
+    list.map(i=>`<button class="cell" data-id="${i.id}"><img class="ph" loading="lazy" src="${photoUrl(i)}" alt="${esc(i.name)}"><span><i class="dot" style="background:${safeHex(i.colorHex)||"var(--line)"}"></i>${esc(i.name)}</span></button>`).join("")
+  }</div>`;
+}
+let tt;function toast(t){const el=$("#toast");el.textContent=t;el.hidden=false;clearTimeout(tt);tt=setTimeout(()=>el.hidden=true,2800);}
+
+/* ---------- 抽屉 ---------- */
+const GRAB=`<button class="grab" aria-label="关闭" data-close></button>`;
+function openSheet(html){$("#sheetIn").innerHTML=GRAB+html;$("#sheet").hidden=false;$("#scrim").hidden=false;$("#sheet").scrollTop=0;return ++sheetToken;}
+function setSheet(html){$("#sheetIn").innerHTML=GRAB+html;}
+function closeSheet(){$("#sheet").hidden=true;$("#scrim").hidden=true;sheetToken++;}
+const live=t=>t===sheetToken&&!$("#sheet").hidden;
+
+/* ---------- 图片 ---------- */
+function compress(file,max=1000,q=.85){
+  return new Promise((res,rej)=>{
+    const img=new Image(),u=URL.createObjectURL(file);
+    img.onload=()=>{const k=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
+      const c=document.createElement("canvas");c.width=Math.round(img.naturalWidth*k);c.height=Math.round(img.naturalHeight*k);
+      c.getContext("2d").drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(u);
+      c.toBlob(b=>b?res(b):rej(new Error("图片处理失败")),"image/jpeg",q);};
+    img.onerror=()=>{URL.revokeObjectURL(u);rej(new Error("这张图片打不开，换一张试试"));};
+    img.src=u;});
+}
+const toDataURL=b=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(r.error);r.readAsDataURL(b);});
+
+/* ---------- 豆包 ---------- */
+class AIError extends Error{}
+async function askJSON(prompt,images=[]){
+  if(!cfg.key)throw new AIError("还没填豆包 API Key");
+  const content=[];
+  for(const b of images)content.push({type:"image_url",image_url:{url:await toDataURL(await compress(b,768,.8))}});
+  content.push({type:"text",text:prompt+"\n\n只输出 JSON，不要任何其他文字，不要代码块。"});
+  let r;
+  try{
+    r=await fetch(ARK_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+cfg.key},
+      body:JSON.stringify({model:cfg.model||DEFAULT_MODEL,messages:[{role:"user",content}],temperature:.4})});
+  }catch{throw new AIError("网络连不上豆包，检查一下网络");}
+  const data=await r.json().catch(()=>null);
+  if(!r.ok){
+    const m=(data?.error?.code||"")+" "+(data?.error?.message||"");
+    if(r.status===401||/auth|apikey|api key/i.test(m))throw new AIError("API Key 不对，去设置里检查一下");
+    if(r.status===404||/model|endpoint/i.test(m))throw new AIError("模型不可用：去设置里换个模型名，或先在方舟控制台开通它");
+    if(r.status===429)throw new AIError("请求太频繁或额度用完了，稍后再试");
+    throw new AIError("豆包返回错误："+(data?.error?.message||r.status));
+  }
+  const text=data?.choices?.[0]?.message?.content||"";
+  return parseJSON(text);
+}
+function parseJSON(t){
+  t=String(t).replace(/<think>[\s\S]*?<\/think>/g,"").trim();
+  const f=t.match(/```(?:json)?\s*([\s\S]*?)```/);if(f)t=f[1];
+  try{return JSON.parse(t);}catch{}
+  const a=t.search(/[\[{]/),b=Math.max(t.lastIndexOf("}"),t.lastIndexOf("]"));
+  if(a>=0&&b>a){try{return JSON.parse(t.slice(a,b+1));}catch{}}
+  throw new AIError("结果格式不对，再试一次");
+}
+const errText=e=>e instanceof AIError?e.message:"没有成功，再试一次";
+
+const body=()=>`身高${cfg.h}cm、体重${cfg.w}kg的娇小身材`;
+const ITEM_SCHEMA=`{"name":"简短名称，如 奶白色短款针织开衫","category":"只能是 ${CATS.join("/")} 之一","color":"主色中文名","colorHex":"#RRGGBB","style":"风格，如 通勤/休闲/甜美/运动","season":"春夏/秋冬/四季","fit":"版型与长度，如 短款/高腰/阔腿/及膝"}`;
+const LOOK_SCHEMA=`{"title":"搭配名","itemIds":["只用衣橱清单里的 id"],"how":"一两句怎么穿（塞衣角、卷袖、配什么鞋）","petite":"针对小个子的显高要点，一句","xhs":"小红书搜索词，中文，含 小个子 和单品关键词","pin":"Pinterest 英文搜索词，含 petite"}`;
+const brief=i=>({id:i.id,name:i.name,category:i.category,color:i.color,style:i.style,season:i.season,fit:i.fit});
+const catalog=()=>JSON.stringify(items.slice(0,300).map(brief));
+function cleanMeta(r){r=r||{};return{name:String(r.name||"未命名").slice(0,30),category:CATS.includes(r.category)?r.category:"上衣",color:String(r.color||""),colorHex:safeHex(r.colorHex),style:String(r.style||""),season:String(r.season||""),fit:String(r.fit||"")};}
+const tagImage=async blob=>cleanMeta(await askJSON(`识别照片里的这一件衣物（或鞋、包、配饰），忽略背景和人。按这个格式回复：${ITEM_SCHEMA}`,[blob]));
+
+/* ---------- 收进衣橱 ---------- */
+async function addFiles(files){
+  const ps=[...files].map(f=>({f,local:URL.createObjectURL(f),stage:"排队中"}));
+  pending.unshift(...ps);render();
+  let failedTag=0;
+  for(const p of ps){
+    try{
+      p.stage="识别中";render();
+      const blob=await compress(p.f);
+      let meta;
+      try{meta=cfg.key?await tagImage(blob):cleanMeta({});if(!cfg.key)failedTag++;}
+      catch(e){meta=cleanMeta({});failedTag++;if(e instanceof AIError&&/Key|模型/.test(e.message))toast(e.message);}
+      await dbPut({id:newId(),...meta,photo:blob,createdAt:Date.now()});
+    }catch(e){toast(e.message||"有一件没存上");}
+    finally{URL.revokeObjectURL(p.local);pending=pending.filter(x=>x!==p);await reload();}
+  }
+  if(failedTag)toast(`${failedTag} 件没识别出来，已存为「未命名」，点开可以修改`);
+}
+
+/* ---------- 想买，先查查 ---------- */
+async function checkFile(file){
+  if(!cfg.key){openSettings();return;}
+  let blob;try{blob=await compress(file);}catch(e){toast(e.message);return;}
+  const url=URL.createObjectURL(blob);
+  const step=t=>`<div class="hero"><img src="${url}" alt=""><div><h2>这件衣服</h2><div class="status"><span class="spin"></span>${t}</div></div></div>`;
+  const tok=openSheet(step("识别这件衣服…"));
+  try{
+    const meta=await tagImage(blob);
+    if(!live(tok))return;
+    setSheet(step(items.length?`和衣橱里 ${items.length} 件比对…`:"想想怎么穿…"));
+    const cands=items.filter(i=>i.category===meta.category).slice(0,8);
+    const prompt=`你是懂小个子穿搭的造型师。用户是${body()}。
+第1张图是她「想买」的新衣服，已识别为：${JSON.stringify(meta)}。
+${cands.length?`第2到第${cands.length+1}张图依次是她衣橱里的同类单品，id 依次为：${cands.map(c=>c.id).join(", ")}。`:""}
+她衣橱的完整清单：${catalog()}
+任务：
+1. 判断衣橱里有没有和新衣服类似的（颜色、款式、用途都接近才算；只是同类别不算）。
+2. 用新衣服 + 衣橱已有单品给出 2-3 套搭配（itemIds 不含新衣服本身，只能用清单里的 id；衣橱里缺的就在 how 里说明要补什么）。
+3. 结合她的身高，给 2-3 条购买或穿着提醒（衣长、腰线、版型是否压个子等）。
+回复格式：{"verdict":"一句话结论","similar":[{"id":"","level":"几乎一样/很像/风格接近","reason":"一句"}],"looks":[${LOOK_SCHEMA}],"tips":["..."]}`;
+    const r=await askJSON(prompt,[blob,...cands.map(c=>c.photo)]);
+    if(!live(tok))return;
+    renderCheck(url,blob,meta,r||{});
+  }catch(e){
+    if(!live(tok))return;
+    setSheet(`<div class="hero"><img src="${url}" alt=""><div><h2>没比对成功</h2><p class="err">${esc(errText(e))}</p></div></div><button class="btn ghost" data-close>关闭</button>`);
+  }
+}
+function renderCheck(url,blob,meta,r){
+  const byId=Object.fromEntries(items.map(i=>[i.id,i]));
+  const sims=(Array.isArray(r.similar)?r.similar:[]).filter(s=>byId[s.id]);
+  const has=sims.length>0;
+  setSheet(`<div class="hero"><img src="${url}" alt=""><div><h2>${esc(meta.name)}</h2><div class="meta">${pills(meta)}</div></div></div>
+  <div class="verdict ${has?"has":"none"}">${esc(r.verdict||(has?"衣橱里有类似的":"衣橱里没有类似的"))}</div>
+  ${has?`<div class="sec"><h3>衣橱里的相似款</h3>${sims.map(s=>{const i=byId[s.id];return`<div class="sim"><img src="${photoUrl(i)}" alt=""><div><b>${esc(i.name)}<span class="lvl">${esc(s.level||"相似")}</span></b><p>${esc(s.reason)}</p></div></div>`}).join("")}</div>`:""}
+  ${looksHtml(r.looks,byId,url)}
+  ${tipsHtml(r.tips)}
+  <div class="row"><button class="btn ghost" data-close>不买了</button><button class="btn primary" id="buyBtn">买了，收进衣橱</button></div>`);
+  $("#buyBtn").onclick=async()=>{
+    try{await dbPut({id:newId(),...meta,photo:blob,createdAt:Date.now()});await reload();closeSheet();toast("已收进衣橱");}
+    catch{toast("没存上，再试一次");}
+  };
+}
+const pills=m=>[m.category,m.color,m.fit,m.style,m.season].filter(Boolean).map(x=>`<span class="pill">${esc(x)}</span>`).join("");
+function looksHtml(looks,byId,newUrl){
+  looks=(Array.isArray(looks)?looks:[]).slice(0,4);
+  if(!looks.length)return"";
+  return`<div class="sec"><h3>怎么搭</h3><div class="looks">${looks.map(l=>{
+    const pics=(Array.isArray(l.itemIds)?l.itemIds:[]).map(id=>byId[id]).filter(Boolean);
+    const imgs=[`<img class="new" src="${newUrl}" alt="">`,...pics.map(i=>`<img src="${photoUrl(i)}" alt="${esc(i.name)}">`)];
+    const xhs=l.xhs||`小个子 ${l.title||""}`,pin=l.pin||"petite outfit";
+    return`<article class="look"><h4>${esc(l.title||"搭配")}</h4>
+      <div class="strip">${imgs.join("<i>+</i>")}</div>
+      <p>${esc(l.how)}</p>${l.petite?`<p class="pt"><b>${cfg.h}</b>${esc(l.petite)}</p>`:""}
+      <div class="links"><a target="_blank" rel="noopener" href="https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(xhs)}">小红书参考图</a><a target="_blank" rel="noopener" href="https://www.pinterest.com/search/pins/?q=${encodeURIComponent(pin)}">Pinterest 参考图</a></div>
+    </article>`}).join("")}</div></div>`;
+}
+const tipsHtml=t=>Array.isArray(t)&&t.length?`<div class="sec"><h3>小个子提醒</h3><ul class="tips">${t.slice(0,5).map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:"";
+
+/* ---------- 单品详情 ---------- */
+function openItem(id){
+  const i=items.find(x=>x.id===id);if(!i)return;
+  openSheet(`<div class="hero"><img src="${photoUrl(i)}" alt=""><div><h2>${esc(i.name)}</h2><div class="meta">${pills(i)}</div></div></div>
+  <div class="row"><label class="field">名称<input id="fName" value="${esc(i.name)}" maxlength="30"></label>
+  <label class="field" style="flex:.6">类别<select id="fCat">${CATS.map(c=>`<option${c===i.category?" selected":""}>${c}</option>`).join("")}</select></label></div>
+  <div id="lookArea"><button class="btn primary" id="lookBtn" style="width:100%">用衣橱里的衣服搭配它</button></div>
+  <button class="btn danger" id="delBtn">从衣橱移除</button>`);
+  const save=async patch=>{Object.assign(i,patch);try{await dbPut(i);render();}catch{toast("没改成功");}};
+  $("#fName").onchange=e=>save({name:e.target.value.trim()||i.name});
+  $("#fCat").onchange=e=>save({category:e.target.value});
+  $("#delBtn").onclick=async e=>{
+    if(e.target.dataset.armed!=="1"){e.target.dataset.armed="1";e.target.textContent="再点一次确认移除";return;}
+    await dbDel(i.id);URL.revokeObjectURL(urls.get(i.id));urls.delete(i.id);await reload();closeSheet();toast("已移除");
+  };
+  $("#lookBtn").onclick=()=>suggestFor(i);
+}
+async function suggestFor(i){
+  if(!cfg.key){openSettings();return;}
+  const tok=sheetToken;
+  $("#lookArea").innerHTML=`<div class="status"><span class="spin"></span>正在翻衣橱想搭配…</div>`;
+  try{
+    const r=await askJSON(`你是懂小个子穿搭的造型师。用户是${body()}。
+图片是她衣橱里的这件单品：${JSON.stringify(brief(i))}
+她衣橱的完整清单：${catalog()}
+用这件单品 + 衣橱里其他单品给出 2-3 套不同场合的搭配（itemIds 不含这件本身，只能用清单里的 id）。再列出 1-3 件「衣橱里缺、补上后能让这件更好搭」的单品。
+回复格式：{"looks":[${LOOK_SCHEMA}],"missing":["一句话描述要补的单品"]}`,[i.photo]);
+    if(!live(tok))return;
+    const byId=Object.fromEntries(items.map(x=>[x.id,x]));
+    const miss=Array.isArray(r?.missing)&&r.missing.length?`<div class="sec" style="margin-top:16px"><h3>补上这些更好搭</h3><ul class="tips">${r.missing.slice(0,3).map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:"";
+    $("#lookArea").innerHTML=(looksHtml(r?.looks,byId,photoUrl(i))||`<p class="err">没想出搭配，衣橱再多收几件试试。</p>`)+miss+`<button class="btn ghost" id="lookBtn" style="width:100%;margin-top:12px">换一组</button>`;
+  }catch(e){
+    if(!live(tok))return;
+    $("#lookArea").innerHTML=`<p class="err" style="margin-bottom:10px">${esc(errText(e))}</p><button class="btn" id="lookBtn" style="width:100%">再试一次</button>`;
+  }
+  $("#lookBtn").onclick=()=>suggestFor(i);
+}
+
+/* ---------- 设置 ---------- */
+function openSettings(){
+  openSheet(`<h2>设置</h2>
+  <div class="row"><label class="field">身高 cm<input id="sh" type="number" inputmode="numeric" value="${cfg.h}"></label><label class="field">体重 kg<input id="sw" type="number" inputmode="decimal" value="${cfg.w}"></label></div>
+  <div class="group">
+    <label class="field">豆包 API Key<input id="sk" type="password" autocomplete="off" placeholder="在火山方舟控制台创建" value="${esc(cfg.key)}"></label>
+    <label class="field">模型<input id="sm" autocomplete="off" value="${esc(cfg.model)}"></label>
+    <p class="hint">Key 只保存在这台手机的浏览器里。模型可填模型 ID 或 ep- 开头的接入点 ID。</p>
+    <button class="btn" id="sTest">测试连接</button>
+  </div>
+  <button class="btn primary" id="sSave">保存</button>
+  <div class="group">
+    <p class="hint">衣服和照片都存在这台手机的浏览器里。换手机或清理浏览器数据前，先导出备份。</p>
+    <div class="row"><button class="btn" id="sExport">导出备份</button><button class="btn" id="sImport">导入备份</button></div>
+  </div>`);
+  const read=()=>({h:+$("#sh").value,w:+$("#sw").value,key:$("#sk").value.trim(),model:$("#sm").value.trim()||DEFAULT_MODEL});
+  $("#sSave").onclick=()=>{
+    const v=read();
+    if(!(v.h>100&&v.h<220&&v.w>25&&v.w<200)){toast("身高体重好像不对，再检查一下");return;}
+    cfg=v;Object.entries(v).forEach(([k,x])=>LS.set(k,x));render();closeSheet();toast("已保存");
+  };
+  $("#sTest").onclick=async e=>{
+    const old=cfg;cfg={...cfg,...read()};e.target.disabled=true;e.target.textContent="测试中…";
+    try{const r=await askJSON('回复 {"ok":true}');toast(r?.ok?"连接正常":"能连上，但回复不太对");}
+    catch(err){toast(errText(err));}
+    finally{cfg=old;e.target.disabled=false;e.target.textContent="测试连接";}
+  };
+  $("#sExport").onclick=exportBackup;
+  $("#sImport").onclick=()=>$("#importInput").click();
+}
+async function exportBackup(){
+  if(!items.length){toast("衣橱是空的，没东西可导出");return;}
+  toast("正在打包…");
+  const out=[];for(const i of items)out.push({...i,photo:await toDataURL(i.photo)});
+  const blob=new Blob([JSON.stringify({app:"wardrobe",v:1,h:cfg.h,w:cfg.w,items:out})],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+  a.download=`衣橱备份-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},4000);
+}
+async function importBackup(file){
+  try{
+    const d=JSON.parse(await file.text());
+    if(d?.app!=="wardrobe"||!Array.isArray(d.items))throw 0;
+    let n=0;
+    for(const it of d.items){if(!it.id||!it.photo)continue;const photo=await (await fetch(it.photo)).blob();await dbPut({...it,...cleanMeta(it),photo});n++;}
+    await reload();closeSheet();toast(`已导入 ${n} 件`);
+  }catch{toast("这个文件不是衣橱备份");}
+}
+
+/* ---------- 事件 ---------- */
+document.addEventListener("click",e=>{
+  if(e.target.id==="scrim"){closeSheet();return;}
+  const t=e.target.closest("[data-close],[data-c],[data-open],.cell[data-id]");
+  if(!t)return;
+  if(t.hasAttribute("data-close"))closeSheet();
+  else if(t.dataset.open)openSettings();
+  else if(t.dataset.c){filter=t.dataset.c;render();}
+  else if(t.dataset.id)openItem(t.dataset.id);
+});
+$("#addBtn").onclick=()=>$("#addInput").click();
+$("#checkBtn").onclick=()=>cfg.key?$("#checkInput").click():openSettings();
+$("#addInput").onchange=e=>{const f=e.target.files;if(f?.length)addFiles(f);e.target.value="";};
+$("#checkInput").onchange=e=>{const f=e.target.files?.[0];if(f)checkFile(f);e.target.value="";};
+$("#importInput").onchange=e=>{const f=e.target.files?.[0];if(f)importBackup(f);e.target.value="";};
+$("#bodyBtn").onclick=openSettings;
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeSheet();});
+
+/* ---------- 启动 ---------- */
+render();
+(async()=>{
+  try{idb=await openDB();navigator.storage?.persist?.().catch(()=>{});await reload();}
+  catch{$("#grid").innerHTML=`<div class="empty"><strong>这个浏览器不能保存数据</strong>关掉无痕模式，或换 Safari / Chrome 打开。</div>`;}
+})();
+</script>
+</body>
+</html>
